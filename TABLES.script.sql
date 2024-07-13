@@ -13,113 +13,55 @@ SELECT
 FROM czechia_payroll_value_type cpvt;    
 -- 316 = Průměrný počet zaměstnaných osob / 5958 = Průměrná hrubá mzda na zaměstnance
 
-SELECT 
-	*
-FROM czechia_payroll_industry_branch cpib 
-/*
- * 	A	Zemědělství, lesnictví, rybářství
-	B	Těžba a dobývání
-	C	Zpracovatelský průmysl
-	D	Výroba a rozvod elektřiny, plynu, tepla a klimatiz. vzduchu
-	E	Zásobování vodou; činnosti související s odpady a sanacemi
-	F	Stavebnictví
-	G	Velkoobchod a maloobchod; opravy a údržba motorových vozidel
-	H	Doprava a skladování
-	I	Ubytování, stravování a pohostinství
-	J	Informační a komunikační činnosti
-	K	Peněžnictví a pojišťovnictví
-	L	Činnosti v oblasti nemovitostí
-	M	Profesní, vědecké a technické činnosti
-	N	Administrativní a podpůrné činnosti
-	O	Veřejná správa a obrana; povinné sociální zabezpečení
-	P	Vzdělávání
-	Q	Zdravotní a sociální péče
-	R	Kulturní, zábavní a rekreační činnosti
-	S	Ostatní činnosti
- */
-
-CREATE TABLE t_Martin_Kmet_project_SQL_primary_final
+CREATE OR REPLACE TABLE t_Martin_Kmet_project_SQL_primary_final 
 AS (
 	SELECT 
-		cpay.payroll_id,
-		cpay.salary,
-		cpay.payroll_calculation,
-		cpay.payroll_industry,
-		cpay.`year`,
-		cp.price_category,
-		cp.amount,
-		cp.price_unit,
-		cp.product, 
-		cp.price,
-		cp.region_code
-	FROM 
-		(
-		SELECT 
-			cp.id AS payroll_id,
-			round(avg(cp.value ), 2) AS salary,
-			CASE  
-				WHEN calculation_code = 100 THEN "fyzický"
-				ELSE "přepočtený"
-			END
-			AS payroll_calculation,
-			cp.payroll_year AS `year`,
-			CASE 
-				WHEN cp.industry_branch_code = "A" THEN "Zemědělství, lesnictví, rybářství"
-				WHEN cp.industry_branch_code = "B" THEN "Těžba a dobývání"
-				WHEN cp.industry_branch_code = "C" THEN "Zpracovatelský průmysl"
-				WHEN cp.industry_branch_code = "D" THEN "Výroba a rozvod elektřiny, plynu, tepla a klimatiz. vzduchu"
-				WHEN cp.industry_branch_code = "E" THEN "Zásobování vodou; činnosti související s odpady a sanacemi"
-				WHEN cp.industry_branch_code = "F" THEN "Stavebnictví"
-				WHEN cp.industry_branch_code = "G" THEN "Velkoobchod a maloobchod; opravy a údržba motorových vozidel"
-				WHEN cp.industry_branch_code = "H" THEN "Doprava a skladování"
-				WHEN cp.industry_branch_code = "I" THEN "Ubytování, stravování a pohostinství"
-				WHEN cp.industry_branch_code = "J" THEN "Informační a komunikační činnosti"
-				WHEN cp.industry_branch_code = "K" THEN "Peněžnictví a pojišťovnictví"
-				WHEN cp.industry_branch_code = "L" THEN "Činnosti v oblasti nemovitostí"
-				WHEN cp.industry_branch_code = "M" THEN "Profesní, vědecké a technické činnosti"
-				WHEN cp.industry_branch_code = "N" THEN "Administrativní a podpůrné činnosti"
-				WHEN cp.industry_branch_code = "O" THEN "Veřejná správa a obrana; povinné sociální zabezpečení"
-				WHEN cp.industry_branch_code = "P" THEN "Vzdělávání"
-				WHEN cp.industry_branch_code = "Q" THEN "Zdravotní a sociální péče"
-				WHEN cp.industry_branch_code = "R" THEN "Kulturní, zábavní a rekreační činnosti"
-				WHEN cp.industry_branch_code = "S" THEN "Ostatní činnosti"
-			END 
-			AS payroll_industry
-		FROM czechia_payroll cp 
-		WHERE cp.value_type_code = 5958
-		AND cp.calculation_code = 200
-		GROUP BY 
-			cp.id,
-			cp.value_type_code,
-			cp.unit_code,
-			cp.calculation_code,
-			cp.industry_branch_code,
-			cp.payroll_year	
-		) cpay
-		INNER JOIN 
-		(SELECT 
-				czpc.name AS price_category,
-				czpc.price_value AS amount,
-				czpc.price_unit,
-				czp.id AS product, 
-				round(avg(czp.value), 2) AS price,
-				czp.category_code AS product_code,
-				czp.region_code,
-				czp.date_from
-			FROM czechia_price czp
-			LEFT JOIN czechia_price_category czpc
-				ON czp.category_code = czpc.code
-			GROUP BY 
-				czpc.name,
-				czpc.price_value,
-				czpc.price_unit,
-				czp.id, 
-				czp.category_code,
-				czp.region_code,
-				YEAR(czp.date_from)
-			) cp
-		ON YEAR (cp.date_from) = cpay.`year`
-);
+	cpay.payroll_year,
+	cpay.industry,
+	cpay.industry_code,
+	cpay.salary,
+	cpay.value_type_code,
+	cp.food_code,
+	cp.food,
+	cp.value
+	FROM (
+	SELECT
+		year(cp.date_from) AS date_from,
+		round(avg(cp.value), 2) AS value,
+		cpc.code AS food_code,
+		cpc.name AS food,
+		cpc.price_value AS price,
+		cpc.price_unit AS price_unit
+	FROM czechia_price cp
+	LEFT JOIN czechia_price_category cpc 
+		ON cp.category_code = cpc.code
+	WHERE region_code IS NULL
+	GROUP BY food_code, year(cp.date_from)
+	) cp
+	INNER JOIN (
+	SELECT 
+		cpay.value_type_code AS value_type_code,
+		cpay.unit_code AS unit_code,
+		cpay_u.name AS unit_code_name,
+		round(avg(cpay.value ), 2) AS salary,
+		cpay.payroll_year AS payroll_year,
+		cpay.calculation_code AS calculation_code,
+		cpay_c.name AS cpc_name,
+		cpay.industry_branch_code AS industry_code,
+		cpay_ib.name AS industry
+	FROM czechia_payroll cpay
+	LEFT JOIN czechia_payroll_calculation cpay_c 
+		ON cpay.calculation_code = cpay_c.code
+	LEFT JOIN czechia_payroll_industry_branch cpay_ib 
+		ON cpay.industry_branch_code = cpay_ib.code 
+	LEFT JOIN czechia_payroll_unit cpay_u
+		ON cpay.unit_code = cpay_u.code 
+	LEFT JOIN czechia_payroll_value_type cpay_vt
+		ON cpay.value_type_code = cpay_vt.code
+	WHERE cpay.value_type_code = 5958
+	GROUP BY payroll_year, industry_code
+	) cpay 
+	ON cp.date_from = cpay.payroll_year);
 
 -- just GDP of CR needed for project
 CREATE TABLE t_Martin_Kmet_project_SQL_secondary_final
